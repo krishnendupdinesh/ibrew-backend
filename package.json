@@ -1,0 +1,28 @@
+{
+  "name": "ibrew-backend",
+  "version": "1.0.0",
+  "description": "Node.js + Express.js backend for the ibrew website",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js",
+    "seed:admin": "node utils/createAdmin.js",
+    "db:verify-mysql": "node utils/verifyMysqlStage1.js",
+    "db:verify-stage2": "node utils/verifyMysqlStage2.js",
+    "migrate:mysql": "node utils/migrateMongoToMysql.js",
+    "db:verify-stage4": "node utils/verifyMysqlStage4.js"
+  },
+  "license": "ISC",
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.6",
+    "dotenv": "^18.0.9",
+    "express": "^5.3.0",
+    "jsonwebtoken": "^9.0.3",
+    "mysql2": "^3.24.6"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.14"
+  }
+}
