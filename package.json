@@ -7,6 +7,7 @@
     "start": "node server.js",
     "dev": "nodemon server.js",
     "seed:admin": "node utils/createAdmin.js",
+    "seed:dummy": "node utils/seedDummyProducts.js",
     "db:verify-mysql": "node utils/verifyMysqlStage1.js",
     "db:verify-stage2": "node utils/verifyMysqlStage2.js",
     "migrate:mysql": "node utils/migrateMongoToMysql.js",
@@ -20,7 +21,9 @@
     "dotenv": "^18.0.9",
     "express": "^5.3.0",
     "jsonwebtoken": "^9.0.3",
-    "mysql2": "^3.24.6"
+    "mysql2": "^3.24.6",
+    "nodemailer": "^10.3.1",
+    "razorpay": "^2.9.8"
   },
   "devDependencies": {
     "nodemon": "^3.1.14"

@@ -3,11 +3,14 @@ const mysql = require("mysql2/promise");
 const fs = require("fs");
 const path = require("path");
 
-const MYSQL_HOST = process.env.MYSQL_HOST || "localhost";
-const MYSQL_PORT = Number(process.env.MYSQL_PORT || 3306);
-const MYSQL_USER = process.env.MYSQL_USER || "root";
-const MYSQL_PASSWORD = process.env.MYSQL_PASSWORD || "";
-const MYSQL_DATABASE = process.env.MYSQL_DATABASE || "imaans_db";
+function getMySQLCredentials() {
+  const host = process.env.MYSQL_HOST || process.env.MYSQLHOST || "localhost";
+  const port = Number(process.env.MYSQL_PORT || process.env.MYSQLPORT || 3306);
+  const user = process.env.MYSQL_USER || process.env.MYSQLUSER || "root";
+  const password = process.env.MYSQL_PASSWORD || process.env.MYSQLPASSWORD || "";
+  const database = process.env.MYSQL_DATABASE || process.env.MYSQLDATABASE || "imaans_db";
+  return { host, port, user, password, database };
+}
 
 // Ensure uploads/products directory exists locally
 const UPLOADS_PRODUCTS_DIR = path.join(__dirname, "..", "uploads", "products");
@@ -19,17 +22,29 @@ let pool = null;
 
 function getPool() {
   if (!pool) {
-    pool = mysql.createPool({
-      host: MYSQL_HOST,
-      port: MYSQL_PORT,
-      user: MYSQL_USER,
-      password: MYSQL_PASSWORD,
-      database: MYSQL_DATABASE,
-      waitForConnections: true,
-      connectionLimit: 10,
-      queueLimit: 0,
-      charset: "utf8mb4",
-    });
+    const dbUrl = process.env.DATABASE_URL || process.env.MYSQL_URL;
+    if (dbUrl) {
+      pool = mysql.createPool({
+        uri: dbUrl,
+        waitForConnections: true,
+        connectionLimit: 10,
+        queueLimit: 0,
+        charset: "utf8mb4",
+      });
+    } else {
+      const creds = getMySQLCredentials();
+      pool = mysql.createPool({
+        host: creds.host,
+        port: creds.port,
+        user: creds.user,
+        password: creds.password,
+        database: creds.database,
+        waitForConnections: true,
+        connectionLimit: 10,
+        queueLimit: 0,
+        charset: "utf8mb4",
+      });
+    }
   }
   return pool;
 }
@@ -177,23 +192,40 @@ const TABLE_DDLS = [
 ];
 
 async function initMySQL() {
-  // 1. Connect without database to ensure `imaans_db` exists
-  const bootstrapConn = await mysql.createConnection({
-    host: MYSQL_HOST,
-    port: MYSQL_PORT,
-    user: MYSQL_USER,
-    password: MYSQL_PASSWORD,
-  });
+  const dbUrl = process.env.DATABASE_URL || process.env.MYSQL_URL;
 
-  await bootstrapConn.query(
-    `CREATE DATABASE IF NOT EXISTS \`${MYSQL_DATABASE}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`
-  );
-  await bootstrapConn.end();
+  // 1. In local development without connection URL, ensure database exists if privileged
+  if (!dbUrl) {
+    try {
+      const creds = getMySQLCredentials();
+      const bootstrapConn = await mysql.createConnection({
+        host: creds.host,
+        port: creds.port,
+        user: creds.user,
+        password: creds.password,
+      });
+
+      await bootstrapConn.query(
+        `CREATE DATABASE IF NOT EXISTS \`${creds.database}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`
+      );
+      await bootstrapConn.end();
+    } catch {
+      // In cloud environments (Render, AWS, etc.), database is pre-created by provider
+    }
+  }
 
   // 2. Initialize connection pool and create the 7 tables if they don't exist
   const dbPool = getPool();
   for (const ddl of TABLE_DDLS) {
     await dbPool.query(ddl);
+  }
+
+  // 3. Ensure enhancements schema (coupons, reviews, addresses, banners, invoice)
+  try {
+    const { runEnhancementsMigration } = require("./migration_enhancements");
+    await runEnhancementsMigration();
+  } catch (err) {
+    console.warn("Enhancements migration warning:", err.message);
   }
 
   return dbPool;

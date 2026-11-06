@@ -55,9 +55,35 @@ function formatSizeRow(s) {
   };
 }
 
+function parseImages(raw, fallback) {
+  if (Array.isArray(raw)) return raw;
+  if (!raw) return fallback ? [fallback] : [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+  } catch { }
+  if (typeof raw === "string" && raw.includes(",")) {
+    return raw.split(",").map((s) => s.trim()).filter(Boolean);
+  }
+  return fallback ? [fallback] : [];
+}
+
+function parseSpecifications(raw) {
+  if (!raw) return {};
+  if (typeof raw === "object") return raw;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return {};
+  }
+}
+
 function formatProductRow(row, sizeRows = []) {
   if (!row) return null;
   const formattedSizes = sizeRows.map(formatSizeRow);
+  const images = parseImages(row.images, row.image);
+  const specifications = parseSpecifications(row.specifications);
+
   return {
     id: String(row.id),
     slug: row.slug || String(row.id),
@@ -66,7 +92,8 @@ function formatProductRow(row, sizeRows = []) {
     category: row.category,
     description: row.description || "",
     detail: row.detail || "",
-    image: row.image || "",
+    image: row.image || (images[0] || ""),
+    images: images.length > 0 ? images : (row.image ? [row.image] : []),
     badge: row.badge || "",
     tags: parseTags(row.tags),
     isBestSeller: Boolean(row.is_best_seller),
@@ -74,6 +101,12 @@ function formatProductRow(row, sizeRows = []) {
     featuredOnHome: Boolean(row.featured_on_home),
     rating: Number(row.rating ?? 4.6),
     reviewCount: Number(row.review_count ?? 24),
+    ingredients: row.ingredients || "",
+    origin: row.origin || "",
+    roastLevel: row.roast_level || "",
+    brewingGuide: row.brewing_guide || "",
+    specifications,
+    lowStockThreshold: Number(row.low_stock_threshold ?? 5),
     sizes: formattedSizes,
     createdAt: toIso(row.created_at),
     updatedAt: toIso(row.updated_at),
@@ -134,6 +167,15 @@ const Product = {
       whereClauses.push("`section` = ?");
       params.push(String(filter.section));
     }
+    if (filter.category) {
+      whereClauses.push("`category` = ?");
+      params.push(String(filter.category));
+    }
+    if (filter.q) {
+      const qStr = `%${String(filter.q).trim()}%`;
+      whereClauses.push("(`name` LIKE ? OR `description` LIKE ? OR `category` LIKE ? OR `tags` LIKE ? OR `badge` LIKE ?)");
+      params.push(qStr, qStr, qStr, qStr, qStr);
+    }
     if (filter.isBestSeller !== undefined) {
       whereClauses.push("`is_best_seller` = ?");
       params.push(filter.isBestSeller ? 1 : 0);
@@ -172,10 +214,13 @@ const Product = {
       const tagsStr = serializeTags(data.tags);
       const mongoId = data.mongoId ? String(data.mongoId) : null;
 
+      const imagesJson = data.images ? JSON.stringify(data.images) : null;
+      const specsJson = data.specifications ? JSON.stringify(data.specifications) : null;
+
       const [res] = await conn.execute(
         `INSERT INTO \`products\`
-         (\`mongo_id\`, \`slug\`, \`name\`, \`section\`, \`category\`, \`description\`, \`detail\`, \`image\`, \`badge\`, \`tags\`, \`is_best_seller\`, \`is_most_selling\`, \`featured_on_home\`, \`rating\`, \`review_count\`)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (\`mongo_id\`, \`slug\`, \`name\`, \`section\`, \`category\`, \`description\`, \`detail\`, \`image\`, \`badge\`, \`tags\`, \`is_best_seller\`, \`is_most_selling\`, \`featured_on_home\`, \`rating\`, \`review_count\`, \`images\`, \`ingredients\`, \`origin\`, \`roast_level\`, \`brewing_guide\`, \`specifications\`, \`low_stock_threshold\`)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           mongoId,
           slug,
@@ -192,6 +237,13 @@ const Product = {
           data.featuredOnHome === false ? 0 : 1,
           Number(data.rating ?? 4.6),
           Math.max(0, Math.floor(Number(data.reviewCount ?? 24))),
+          imagesJson,
+          data.ingredients ? String(data.ingredients) : null,
+          data.origin ? String(data.origin) : "", // NOT NULL column
+          data.roastLevel ? String(data.roastLevel) : "", // NOT NULL column
+          data.brewingGuide ? String(data.brewingGuide) : null,
+          specsJson,
+          Number(data.lowStockThreshold ?? 5),
         ]
       );
 
@@ -262,11 +314,18 @@ const Product = {
       const tagsStr =
         data.tags !== undefined ? serializeTags(data.tags) : existingRow.tags;
 
+      const imagesJson =
+        data.images !== undefined ? JSON.stringify(data.images) : existingRow.images;
+      const specsJson =
+        data.specifications !== undefined ? JSON.stringify(data.specifications) : existingRow.specifications;
+
       await conn.execute(
         `UPDATE \`products\`
          SET \`name\` = ?, \`section\` = ?, \`category\` = ?, \`description\` = ?, \`detail\` = ?,
              \`image\` = ?, \`badge\` = ?, \`tags\` = ?, \`is_best_seller\` = ?, \`is_most_selling\` = ?,
-             \`featured_on_home\` = ?, \`rating\` = ?, \`review_count\` = ?
+             \`featured_on_home\` = ?, \`rating\` = ?, \`review_count\` = ?,
+             \`images\` = ?, \`ingredients\` = ?, \`origin\` = ?, \`roast_level\` = ?, \`brewing_guide\` = ?,
+             \`specifications\` = ?, \`low_stock_threshold\` = ?
          WHERE \`id\` = ?`,
         [
           String(data.name ?? existingRow.name).trim(),
@@ -282,6 +341,13 @@ const Product = {
           data.featuredOnHome !== undefined ? (data.featuredOnHome ? 1 : 0) : existingRow.featured_on_home,
           Number(data.rating ?? existingRow.rating),
           Math.max(0, Math.floor(Number(data.reviewCount ?? existingRow.review_count))),
+          imagesJson,
+          data.ingredients !== undefined ? String(data.ingredients) : existingRow.ingredients,
+          data.origin !== undefined ? String(data.origin) : existingRow.origin,
+          data.roastLevel !== undefined ? String(data.roastLevel) : existingRow.roast_level,
+          data.brewingGuide !== undefined ? String(data.brewingGuide) : existingRow.brewing_guide,
+          specsJson,
+          data.lowStockThreshold !== undefined ? Number(data.lowStockThreshold) : existingRow.low_stock_threshold,
           productId,
         ]
       );
@@ -321,6 +387,62 @@ const Product = {
     if (!existingRow) return null;
     await pool.execute("DELETE FROM `products` WHERE `id` = ?", [existingRow.id]);
     return existingRow;
+  },
+
+  async getRecommendations(idOrSlug) {
+    const pool = getPool();
+    const target = await resolveProductRow(pool, idOrSlug);
+    if (!target) return [];
+
+    // 1. Look in product_recommendations table
+    const [recs] = await pool.query(
+      `SELECT pr.bundle_discount_percent, pr.sort_order, p.*
+       FROM product_recommendations pr
+       JOIN products p ON pr.recommended_product_id = p.id
+       WHERE pr.product_id = ?
+       ORDER BY pr.sort_order ASC, pr.id ASC`,
+      [target.id]
+    );
+
+    if (recs.length > 0) {
+      return attachSizesToProducts(pool, recs);
+    }
+
+    // 2. Fallback: Complementary logic
+    // If coffee, recommend spices or skincare; if skincare, recommend coffee
+    const altSection = target.section === "coffee" ? "skincare" : "coffee";
+    const [fallback] = await pool.query(
+      `SELECT * FROM products 
+       WHERE id != ? AND (section = ? OR is_most_selling = 1) 
+       ORDER BY is_most_selling DESC, is_best_seller DESC, rating DESC 
+       LIMIT 3`,
+      [target.id, altSection]
+    );
+
+    return attachSizesToProducts(pool, fallback);
+  },
+
+  async getLowStockProducts(customThreshold = null) {
+    const pool = getPool();
+    const thresholdVal = customThreshold !== null ? Number(customThreshold) : null;
+
+    let query = `
+      SELECT p.id, p.name, p.slug, p.section, p.category, p.image, p.low_stock_threshold,
+             ps.id AS size_id, ps.label AS size_label, ps.price, ps.stock
+      FROM product_sizes ps
+      JOIN products p ON ps.product_id = p.id
+    `;
+
+    const params = [];
+    if (thresholdVal !== null) {
+      query += ` WHERE ps.stock <= ? ORDER BY ps.stock ASC, p.name ASC`;
+      params.push(thresholdVal);
+    } else {
+      query += ` WHERE ps.stock <= COALESCE(p.low_stock_threshold, 5) ORDER BY ps.stock ASC, p.name ASC`;
+    }
+
+    const [rows] = await pool.query(query, params);
+    return rows;
   },
 };
 

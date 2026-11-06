@@ -27,6 +27,7 @@ function formatOrderRow(row, itemRows = []) {
   return {
     id: row.order_id,
     orderId: row.order_id,
+    dbId: row.id,
     customer: {
       name: row.customer_name || "",
       email: row.customer_email || "",
@@ -41,9 +42,14 @@ function formatOrderRow(row, itemRows = []) {
     subtotal: Number(row.subtotal || 0),
     shipping: Number(row.shipping || 0),
     savings: Number(row.savings || 0),
+    couponCode: row.coupon_code || "",
+    couponDiscount: Number(row.coupon_discount || 0),
     total: Number(row.total || 0),
     paymentMethod: row.payment_method || "cod",
     paymentStatus: row.payment_status || "unpaid",
+    razorpayOrderId: row.razorpay_order_id || "",
+    razorpayPaymentId: row.razorpay_payment_id || "",
+    invoiceNumber: row.invoice_number || `INV-${row.order_id}`,
     status: row.status || "pending",
     trackingNumber: row.tracking_number || "",
     courierName: row.courier_name || "",
@@ -75,17 +81,48 @@ async function attachItemsToOrders(connOrPool, orderRows) {
   return orderRows.map((r) => formatOrderRow(r, itemsByOrderId.get(r.id) || []));
 }
 
-async function findProductForOrderItem(conn, productKey) {
-  const raw = String(productKey || "").trim();
-  if (!raw) return null;
-  const isNum = /^\d+$/.test(raw);
-  const [rows] = await conn.execute(
-    isNum
-      ? "SELECT * FROM `products` WHERE `id` = ? OR `slug` = ? OR `mongo_id` = ? LIMIT 1 FOR UPDATE"
-      : "SELECT * FROM `products` WHERE `slug` = ? OR `mongo_id` = ? LIMIT 1 FOR UPDATE",
-    isNum ? [Number(raw), raw, raw] : [raw, raw]
-  );
-  return rows.length > 0 ? rows[0] : null;
+async function findProductForOrderItem(conn, productKey, itemName) {
+  const rawKey = String(productKey || "").trim();
+  const rawName = String(itemName || "").trim();
+
+  // 1. Check by ID, slug, or mongo_id
+  if (rawKey) {
+    const isNum = /^\d+$/.test(rawKey);
+    const [rows] = await conn.execute(
+      isNum
+        ? "SELECT * FROM `products` WHERE `id` = ? OR `slug` = ? OR `mongo_id` = ? LIMIT 1 FOR UPDATE"
+        : "SELECT * FROM `products` WHERE `slug` = ? OR `mongo_id` = ? LIMIT 1 FOR UPDATE",
+      isNum ? [Number(rawKey), rawKey, rawKey] : [rawKey, rawKey]
+    );
+    if (rows.length > 0) return rows[0];
+
+    // 2. Try prefix match on slug (e.g. "filter-coffee-250" -> "filter-coffee")
+    const cleanPrefix = rawKey.replace(/-\d+$/, "").trim();
+    if (cleanPrefix && cleanPrefix !== rawKey) {
+      const [byPrefix] = await conn.execute(
+        "SELECT * FROM `products` WHERE `slug` = ? LIMIT 1 FOR UPDATE",
+        [cleanPrefix]
+      );
+      if (byPrefix.length > 0) return byPrefix[0];
+    }
+  }
+
+  // 3. Check by exact or partial product name
+  if (rawName) {
+    const [byName] = await conn.execute(
+      "SELECT * FROM `products` WHERE LOWER(`name`) = LOWER(?) LIMIT 1 FOR UPDATE",
+      [rawName]
+    );
+    if (byName.length > 0) return byName[0];
+
+    const [byLike] = await conn.execute(
+      "SELECT * FROM `products` WHERE LOWER(?) LIKE CONCAT(LOWER(`name`), '%') OR LOWER(`name`) LIKE CONCAT(LOWER(?), '%') ORDER BY LENGTH(`name`) DESC LIMIT 1 FOR UPDATE",
+      [rawName, rawName]
+    );
+    if (byLike.length > 0) return byLike[0];
+  }
+
+  return null;
 }
 
 async function findMatchingSizeRowForUpdate(conn, productId, sizeLabel) {
@@ -93,12 +130,35 @@ async function findMatchingSizeRowForUpdate(conn, productId, sizeLabel) {
     "SELECT * FROM `product_sizes` WHERE `product_id` = ? ORDER BY `sort_order` ASC, `id` ASC FOR UPDATE",
     [productId]
   );
-  if (sizeRows.length === 0) return null;
 
   const targetLabel = String(sizeLabel || "").trim().toLowerCase();
+
+  if (sizeRows.length === 0) {
+    const [ins] = await conn.execute(
+      "INSERT INTO `product_sizes` (`product_id`, `label`, `price`, `stock`, `sort_order`) VALUES (?, ?, 0, 50, 0)",
+      [productId, sizeLabel || "Standard"]
+    );
+    return { id: ins.insertId, product_id: productId, label: sizeLabel || "Standard", price: 0, stock: 50 };
+  }
+
   if (targetLabel) {
+    // 1. Exact match
     const exact = sizeRows.find((s) => String(s.label || "").trim().toLowerCase() === targetLabel);
     if (exact) return exact;
+
+    // 2. Normalized match (ignoring whitespace: e.g. "250 g" vs "250g")
+    const normTarget = targetLabel.replace(/\s+/g, "");
+    const norm = sizeRows.find(
+      (s) => String(s.label || "").trim().toLowerCase().replace(/\s+/g, "") === normTarget
+    );
+    if (norm) return norm;
+
+    // 3. Substring match
+    const partial = sizeRows.find((s) => {
+      const l = String(s.label || "").trim().toLowerCase();
+      return l.includes(targetLabel) || targetLabel.includes(l);
+    });
+    if (partial) return partial;
   }
   return sizeRows[0];
 }
@@ -128,6 +188,33 @@ const Order = {
     return formatted || null;
   },
 
+  async findByCustomerEmailOrPhone(email, phone) {
+    const cleanEmail = String(email || "").trim().toLowerCase();
+    const cleanPhone = String(phone || "").trim();
+    if (!cleanEmail && !cleanPhone) return [];
+
+    const pool = getPool();
+    let query = "";
+    let params = [];
+
+    if (cleanEmail && cleanPhone) {
+      query =
+        "SELECT * FROM `orders` WHERE LOWER(`customer_email`) = ? OR `customer_phone` = ? ORDER BY `created_at` DESC, `id` DESC";
+      params = [cleanEmail, cleanPhone];
+    } else if (cleanEmail) {
+      query =
+        "SELECT * FROM `orders` WHERE LOWER(`customer_email`) = ? ORDER BY `created_at` DESC, `id` DESC";
+      params = [cleanEmail];
+    } else {
+      query =
+        "SELECT * FROM `orders` WHERE `customer_phone` = ? ORDER BY `created_at` DESC, `id` DESC";
+      params = [cleanPhone];
+    }
+
+    const [rows] = await pool.execute(query, params);
+    return attachItemsToOrders(pool, rows);
+  },
+
   /**
    * Places an order inside a database transaction:
    * 1. Locks matching `products` and `product_sizes` rows (`FOR UPDATE`).
@@ -147,7 +234,7 @@ const Order = {
       for (const item of items) {
         const qty = Math.max(1, Math.floor(Number(item.quantity || 1)));
         const productKey = String(item.productId || item.id || "item").trim();
-        const productRow = await findProductForOrderItem(conn, productKey);
+        const productRow = await findProductForOrderItem(conn, productKey, item.name);
 
         let productId = null;
         if (productRow) {
@@ -196,12 +283,14 @@ const Order = {
 
       const cust = data.customer || {};
       const mongoId = data.mongoId ? String(data.mongoId) : null;
+      const invoiceNumber = `INV-${String(data.orderId).trim()}`;
 
       const [orderRes] = await conn.execute(
         `INSERT INTO \`orders\`
          (\`mongo_id\`, \`order_id\`, \`customer_name\`, \`customer_email\`, \`customer_phone\`, \`customer_address\`, \`customer_city\`, \`customer_state\`, \`customer_pincode\`, \`customer_notes\`,
-          \`subtotal\`, \`shipping\`, \`savings\`, \`total\`, \`payment_method\`, \`payment_status\`, \`status\`, \`tracking_number\`, \`courier_name\`, \`admin_notes\`, \`confirmed_at\`, \`shipped_at\`, \`delivered_at\`)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          \`subtotal\`, \`shipping\`, \`savings\`, \`total\`, \`coupon_code\`, \`coupon_discount\`, \`razorpay_order_id\`, \`razorpay_payment_id\`, \`razorpay_signature\`, \`invoice_number\`,
+          \`payment_method\`, \`payment_status\`, \`status\`, \`tracking_number\`, \`courier_name\`, \`admin_notes\`, \`confirmed_at\`, \`shipped_at\`, \`delivered_at\`)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           mongoId,
           String(data.orderId).trim(),
@@ -217,7 +306,14 @@ const Order = {
           Number(data.shipping || 0),
           Number(data.savings || 0),
           Number(data.total || 0),
-          ["cod", "upi", "card"].includes(data.paymentMethod) ? data.paymentMethod : "cod",
+          // These columns are NOT NULL DEFAULT '' -> use "" instead of null (MySQL strict mode)
+          data.couponCode ? String(data.couponCode).trim().toUpperCase() : "",
+          Number(data.couponDiscount || 0),
+          data.razorpayOrderId ? String(data.razorpayOrderId).trim() : "",
+          data.razorpayPaymentId ? String(data.razorpayPaymentId).trim() : "",
+          data.razorpaySignature ? String(data.razorpaySignature).trim() : "",
+          invoiceNumber,
+          ["cod", "upi", "card", "razorpay"].includes(data.paymentMethod) ? data.paymentMethod : "cod",
           ["unpaid", "paid", "refunded"].includes(data.paymentStatus) ? data.paymentStatus : "unpaid",
           data.status || "pending",
           String(data.trackingNumber || "").trim(),
@@ -230,6 +326,33 @@ const Order = {
       );
 
       const orderDbId = orderRes.insertId;
+
+      // Record coupon usage if applied
+      if (data.couponCode) {
+        const cleanCode = String(data.couponCode).trim().toUpperCase();
+        const [cRows] = await conn.execute(
+          "SELECT id FROM coupons WHERE code = ? LIMIT 1",
+          [cleanCode]
+        );
+        if (cRows.length > 0) {
+          const couponId = cRows[0].id;
+          await conn.execute(
+            `INSERT INTO coupon_usages (coupon_id, order_id, customer_email, customer_phone, discount_amount)
+             VALUES (?, ?, ?, ?, ?)`,
+            [
+              couponId,
+              String(data.orderId).trim(),
+              String(cust.email || "").trim().toLowerCase(),
+              String(cust.phone || "").trim(),
+              Number(data.couponDiscount || 0),
+            ]
+          );
+          await conn.execute(
+            "UPDATE coupons SET used_count = used_count + 1 WHERE id = ?",
+            [couponId]
+          );
+        }
+      }
 
       for (const ri of resolvedItems) {
         await conn.execute(
@@ -305,7 +428,7 @@ const Order = {
           for (const item of itemRows) {
             let targetProductId = item.product_id;
             if (!targetProductId && item.product_key) {
-              const pRow = await findProductForOrderItem(conn, item.product_key);
+              const pRow = await findProductForOrderItem(conn, item.product_key, item.name);
               if (pRow) targetProductId = pRow.id;
             }
             if (targetProductId) {
@@ -323,7 +446,7 @@ const Order = {
           for (const item of itemRows) {
             let targetProductId = item.product_id;
             if (!targetProductId && item.product_key) {
-              const pRow = await findProductForOrderItem(conn, item.product_key);
+              const pRow = await findProductForOrderItem(conn, item.product_key, item.name);
               if (pRow) targetProductId = pRow.id;
             }
             if (targetProductId) {
@@ -365,12 +488,16 @@ const Order = {
 
       const nextConfirmedAt =
         updateFields.confirmedAt !== undefined
-          ? updateFields.confirmedAt
+          ? (updateFields.confirmedAt ? new Date(updateFields.confirmedAt) : null)
           : existing.confirmed_at;
       const nextShippedAt =
-        updateFields.shippedAt !== undefined ? updateFields.shippedAt : existing.shipped_at;
+        updateFields.shippedAt !== undefined
+          ? (updateFields.shippedAt ? new Date(updateFields.shippedAt) : null)
+          : existing.shipped_at;
       const nextDeliveredAt =
-        updateFields.deliveredAt !== undefined ? updateFields.deliveredAt : existing.delivered_at;
+        updateFields.deliveredAt !== undefined
+          ? (updateFields.deliveredAt ? new Date(updateFields.deliveredAt) : null)
+          : existing.delivered_at;
 
       await conn.execute(
         `UPDATE \`orders\`

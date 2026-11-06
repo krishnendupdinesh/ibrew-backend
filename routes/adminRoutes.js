@@ -1,3 +1,7 @@
+const couponController = require("../controllers/couponController");
+const reviewController = require("../controllers/reviewController");
+const bannerController = require("../controllers/bannerController");
+
 const express = require("express");
 const { requireLogin, requireAdmin } = require("../middleware/auth");
 const { getQuotes, updateQuoteStatus, getUsers } = require("../controllers/adminController");
@@ -34,5 +38,22 @@ router.delete("/products/:id", deleteProduct);
 router.get("/orders", getAdminOrders);
 router.patch("/orders/:id", updateOrder);
 router.delete("/orders/:id", deleteOrder);
+
+// Coupon management
+router.get("/coupons", couponController.adminGetCoupons);
+router.post("/coupons", couponController.adminCreateCoupon);
+router.put("/coupons/:id", couponController.adminUpdateCoupon);
+router.delete("/coupons/:id", couponController.adminDeleteCoupon);
+
+// Review management
+router.get("/reviews", reviewController.adminGetReviews);
+router.patch("/reviews/:id/approval", reviewController.adminUpdateReviewApproval);
+router.delete("/reviews/:id", reviewController.adminDeleteReview);
+
+// Banner management
+router.get("/banners", bannerController.getAllBanners);
+router.post("/banners", bannerController.createBanner);
+router.put("/banners/:id", bannerController.updateBanner);
+router.delete("/banners/:id", bannerController.deleteBanner);
 
 module.exports = router;

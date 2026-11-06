@@ -18,12 +18,6 @@ async function ensureDefaultProducts() {
   const count = await Product.countDocuments();
   if (count === 0) {
     await Product.insertMany(DEFAULT_PRODUCTS);
-  } else if (count < DEFAULT_PRODUCTS.length) {
-    const existingSlugs = new Set(await Product.findAllSlugs());
-    const missing = DEFAULT_PRODUCTS.filter((p) => !existingSlugs.has(p.slug));
-    if (missing.length > 0) {
-      await Product.insertMany(missing);
-    }
   }
   seededOnce = true;
 }
@@ -66,6 +60,12 @@ async function getPublicProducts(req, res) {
     const filter = {};
     if (req.query.section && ALLOWED_SECTIONS.includes(String(req.query.section))) {
       filter.section = String(req.query.section);
+    }
+    if (req.query.category) {
+      filter.category = String(req.query.category).trim();
+    }
+    if (req.query.q) {
+      filter.q = String(req.query.q).trim();
     }
     if (req.query.bestSeller === "true") {
       filter.isBestSeller = true;
@@ -305,16 +305,46 @@ async function deleteProduct(req, res) {
     if (!deleted) {
       return res.status(404).json({ error: "Product not found." });
     }
-    res.json({ ok: true });
+    res.json({ ok: true, success: true });
   } catch (error) {
     console.log("deleteProduct error:", error.message);
     res.status(500).json({ error: "Could not delete the product." });
   }
 }
 
+// GET /api/products/:idOrSlug
+async function getSingleProduct(req, res) {
+  try {
+    await ensureDefaultProducts();
+    const { idOrSlug } = req.params;
+    const product = await Product.findById(idOrSlug);
+    if (!product) {
+      return res.status(404).json({ error: "Product not found" });
+    }
+    res.json({ product });
+  } catch (error) {
+    console.log("getSingleProduct error:", error.message);
+    res.status(500).json({ error: "Could not load product details." });
+  }
+}
+
+// GET /api/products/:idOrSlug/recommendations
+async function getProductRecommendations(req, res) {
+  try {
+    const { idOrSlug } = req.params;
+    const recommendations = await Product.getRecommendations(idOrSlug);
+    res.json({ success: true, recommendations });
+  } catch (error) {
+    console.log("getProductRecommendations error:", error.message);
+    res.status(500).json({ error: "Could not load recommendations." });
+  }
+}
+
 module.exports = {
   ensureDefaultProducts,
   getPublicProducts,
+  getSingleProduct,
+  getProductRecommendations,
   getAdminProducts,
   createProduct,
   updateProduct,

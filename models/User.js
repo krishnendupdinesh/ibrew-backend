@@ -64,6 +64,13 @@ const User = {
       if (filter.id || filter._id) {
         return User.findById(filter.id || filter._id);
       }
+      if (filter.role) {
+        const [rows] = await pool.execute(
+          "SELECT * FROM `users` WHERE `role` = ? LIMIT 1",
+          [String(filter.role)]
+        );
+        return rows.length > 0 ? formatUserRow(rows[0]) : null;
+      }
       return null;
     })();
     return withLeanSupport(promise);

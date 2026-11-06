@@ -2,36 +2,21 @@
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
 
-// In-memory cache so we don't query MySQL on every single API call
-const userCacheById = new Map();
-
-function cacheUser(user) {
-  if (!user) return null;
-  const plain = typeof user.toJSON === "function" ? user.toJSON() : {
-    id: String(user._id || user.id),
-    _id: String(user._id || user.id),
-    name: user.name,
-    email: user.email,
-    phone: user.phone || "",
-    role: user.role || "customer",
-  };
-  plain._id = plain.id;
-  userCacheById.set(String(plain.id), plain);
-  return plain;
-}
-
-// Reads the login cookie and finds the user (or returns null).
+// Reads the login cookie (or Bearer auth header) and finds the user (or returns null).
 async function getUserFromCookie(req) {
-  const token = req.cookies.token;
+  let token = req.cookies?.token;
+  if (!token && req.headers?.authorization && req.headers.authorization.startsWith("Bearer ")) {
+    token = req.headers.authorization.split(" ")[1];
+  }
   if (!token) return null;
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || "ibrew-super-secret-jwt-key-for-auth");
 
-    // Fast path 1: token already embeds user profile fields -> 0ms (no DB query needed!)
+    // Fast path: verified token already embeds user profile fields
     if (decoded && decoded.id && decoded.email && decoded.role) {
       return {
-        _id: decoded.id,
+        _id: String(decoded.id),
         id: String(decoded.id),
         name: decoded.name || "User",
         email: decoded.email,
@@ -40,17 +25,25 @@ async function getUserFromCookie(req) {
       };
     }
 
-    // Fast path 2: check in-memory cache by user ID
-    if (decoded && decoded.id && userCacheById.has(String(decoded.id))) {
-      return userCacheById.get(String(decoded.id));
-    }
-
-    // Fallback: query MySQL once and cache
+    // Direct MySQL fallback if fields were not in token
     const dbUser = await User.findById(decoded.id);
-    return cacheUser(dbUser);
+    if (!dbUser) return null;
+    return {
+      _id: String(dbUser.id),
+      id: String(dbUser.id),
+      name: dbUser.name,
+      email: dbUser.email,
+      phone: dbUser.phone || "",
+      role: dbUser.role || "customer",
+    };
   } catch (error) {
     return null; // token is wrong or expired
   }
+}
+
+// Helper kept for backward-compatibility with call sites
+function cacheUser(user) {
+  return user;
 }
 
 // Use on routes where login is REQUIRED

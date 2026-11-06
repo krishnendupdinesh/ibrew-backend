@@ -12,11 +12,37 @@ const quoteRoutes = require("./routes/quoteRoutes");
 const adminRoutes = require("./routes/adminRoutes");
 const productRoutes = require("./routes/productRoutes");
 const orderRoutes = require("./routes/orderRoutes");
+const couponRoutes = require("./routes/couponRoutes");
+const reviewRoutes = require("./routes/reviewRoutes");
+const bannerRoutes = require("./routes/bannerRoutes");
+const userAddressRoutes = require("./routes/userAddressRoutes");
+const shippingRoutes = require("./routes/shippingRoutes");
 
 const app = express();
 
 // ----- middleware (runs on every request) -----
-app.use(cors({ origin: process.env.CLIENT_URL, credentials: true }));
+const allowedOrigins = [
+  process.env.CLIENT_URL,
+  "http://localhost:3000",
+  "http://127.0.0.1:3000",
+].filter(Boolean);
+
+app.use(
+  cors({
+    origin: function (origin, callback) {
+      if (!origin) return callback(null, true);
+      const clean = origin.replace(/\/+$/, "");
+      const isAllowed = allowedOrigins.some(
+        (allowed) => allowed.replace(/\/+$/, "") === clean
+      );
+      if (isAllowed || process.env.NODE_ENV !== "production") {
+        return callback(null, true);
+      }
+      return callback(new Error("CORS origin blocked"));
+    },
+    credentials: true,
+  })
+);
 app.use(express.json({ limit: "10mb" })); // lets us read JSON & uploaded image data URLs sent by the frontend
 app.use(cookieParser()); // lets us read cookies (the login token)
 
@@ -32,6 +58,11 @@ app.use("/api/quote", quoteRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/products", productRoutes);
 app.use("/api/orders", orderRoutes);
+app.use("/api/coupons", couponRoutes);
+app.use("/api/products", reviewRoutes);
+app.use("/api/banners", bannerRoutes);
+app.use("/api/user/addresses", userAddressRoutes);
+app.use("/api/shipping", shippingRoutes);
 
 // ----- unknown URL -----
 app.use((req, res) => res.status(404).json({ error: "Route not found." }));
