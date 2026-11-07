@@ -23,6 +23,19 @@ const router = express.Router();
 // Every route below needs: logged in AND admin
 router.use(requireLogin, requireAdmin);
 
+// Sales Analytics & Inventory
+const {
+  getAnalytics,
+  getLowStockAlerts,
+  restockItem,
+  exportOrdersCSV,
+} = require("../controllers/adminController");
+
+router.get("/analytics", getAnalytics);
+router.get("/inventory/low-stock", getLowStockAlerts);
+router.post("/inventory/restock", restockItem);
+router.get("/export/orders.csv", exportOrdersCSV);
+
 router.get("/quotes", getQuotes);
 router.patch("/quotes", updateQuoteStatus);
 router.get("/users", getUsers);

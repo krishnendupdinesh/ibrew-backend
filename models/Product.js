@@ -409,8 +409,8 @@ const Product = {
     }
 
     // 2. Fallback: Complementary logic
-    // If coffee, recommend spices or skincare; if skincare, recommend coffee
-    const altSection = target.section === "coffee" ? "skincare" : "coffee";
+    // If coffee, recommend spices or coffee-skin; otherwise recommend coffee
+    const altSection = target.section === "coffee" ? "spices" : "coffee";
     const [fallback] = await pool.query(
       `SELECT * FROM products 
        WHERE id != ? AND (section = ? OR is_most_selling = 1) 
