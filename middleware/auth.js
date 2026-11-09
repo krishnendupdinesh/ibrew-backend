@@ -11,7 +11,14 @@ async function getUserFromCookie(req) {
   if (!token) return null;
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || "ibrew-super-secret-jwt-key-for-auth");
+    const secret = process.env.JWT_SECRET || "adrijbyfkdfkugbcjustsnriudbbdfjf";
+    let decoded = null;
+    try {
+      decoded = jwt.verify(token, secret);
+    } catch {
+      // Fallback for previous legacy secret
+      decoded = jwt.verify(token, "ibrew-super-secret-jwt-key-for-auth");
+    }
 
     // Fast path: verified token already embeds user profile fields
     if (decoded && decoded.id && decoded.email && decoded.role) {

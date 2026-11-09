@@ -35,7 +35,7 @@ function sendLoginCookie(res, user) {
   const clean = serializeUser(user);
   if (typeof cacheUser === "function") cacheUser(clean);
 
-  const jwtSecret = process.env.JWT_SECRET || "ibrew-super-secret-jwt-key-for-auth";
+  const jwtSecret = process.env.JWT_SECRET || "adrijbyfkdfkugbcjustsnriudbbdfjf";
   const token = jwt.sign(
     {
       id: clean.id,
