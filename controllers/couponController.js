@@ -32,7 +32,18 @@ async function applyCoupon(req, res) {
 // GET /api/coupons/active -> Public list of available active promo coupons for suggestions
 async function getActiveCoupons(req, res) {
   try {
-    const coupons = await Coupon.findActive();
+    const rawCoupons = await Coupon.findActive();
+    const coupons = rawCoupons.map((c) => ({
+      id: c.id,
+      code: c.code,
+      description: c.description || "",
+      discountType: c.discount_type || "percentage",
+      discountValue: Number(c.discount_value || 0),
+      minOrderValue: Number(c.min_order_value || 0),
+      maxDiscountAmount: c.max_discount ? Number(c.max_discount) : undefined,
+      freeShipping: Boolean(c.free_shipping),
+      expiresAt: c.expires_at,
+    }));
     return res.json({ coupons });
   } catch (err) {
     console.error("getActiveCoupons error:", err);
