@@ -186,6 +186,24 @@ async function runEnhancementsMigration() {
       INDEX \`idx_order_notif_order\` (\`order_id\`),
       INDEX \`idx_order_notif_created\` (\`created_at\` DESC)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+
+    // Bulk Quotation Products Catalog
+    `CREATE TABLE IF NOT EXISTS \`bulk_products\` (
+      \`id\` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      \`slug\` VARCHAR(191) NOT NULL UNIQUE,
+      \`name\` VARCHAR(255) NOT NULL,
+      \`category\` VARCHAR(191) NOT NULL DEFAULT 'Coffee Powder',
+      \`description\` TEXT NOT NULL,
+      \`unit\` VARCHAR(64) NOT NULL DEFAULT 'kg',
+      \`moq\` INT UNSIGNED NOT NULL DEFAULT 10,
+      \`step\` INT UNSIGNED NOT NULL DEFAULT 5,
+      \`image\` VARCHAR(500) NOT NULL DEFAULT '',
+      \`sort_order\` INT UNSIGNED NOT NULL DEFAULT 0,
+      \`is_active\` TINYINT(1) NOT NULL DEFAULT 1,
+      \`created_at\` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      \`updated_at\` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX \`idx_bulk_products_category\` (\`category\`, \`is_active\`, \`sort_order\`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
   ];
 
   for (const ddl of NEW_TABLES) {

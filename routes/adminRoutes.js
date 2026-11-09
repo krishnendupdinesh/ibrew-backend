@@ -1,6 +1,7 @@
 const couponController = require("../controllers/couponController");
 const reviewController = require("../controllers/reviewController");
 const bannerController = require("../controllers/bannerController");
+const bulkProductController = require("../controllers/bulkProductController");
 
 const express = require("express");
 const { requireLogin, requireAdmin } = require("../middleware/auth");
@@ -68,5 +69,11 @@ router.get("/banners", bannerController.getAllBanners);
 router.post("/banners", bannerController.createBanner);
 router.put("/banners/:id", bannerController.updateBanner);
 router.delete("/banners/:id", bannerController.deleteBanner);
+
+// Bulk quotation catalog management
+router.get("/bulk-products", bulkProductController.getAdminBulkProducts);
+router.post("/bulk-products", bulkProductController.createBulkProduct);
+router.put("/bulk-products/:id", bulkProductController.updateBulkProduct);
+router.delete("/bulk-products/:id", bulkProductController.deleteBulkProduct);
 
 module.exports = router;
