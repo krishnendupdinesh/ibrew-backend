@@ -43,19 +43,23 @@ class Banner {
 
   static async create(data) {
     const pool = getPool();
+    const isActive = data.isActive !== undefined 
+      ? (data.isActive === true || data.isActive === 1 || data.isActive === "1" ? 1 : 0)
+      : (data.is_active ?? 1);
+
     const [res] = await pool.query(
       `INSERT INTO homepage_banners 
        (type, title, subtitle, image, link, cta_text, sort_order, is_active, start_date, end_date)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
-        data.type || "hero_slide",
+        data.type || data.bannerType || "hero_slide",
         data.title,
         data.subtitle || "",
-        data.image || "",
-        data.link || "/",
-        data.cta_text || "Shop Now",
-        data.sort_order ?? 0,
-        data.is_active ?? 1,
+        data.image || data.imageUrl || "",
+        data.link || data.ctaLink || "/",
+        data.cta_text || data.ctaText || "Shop Now",
+        data.sort_order ?? data.sortOrder ?? data.displayOrder ?? 0,
+        isActive,
         data.start_date || null,
         data.end_date || null,
       ]
@@ -68,25 +72,38 @@ class Banner {
     const fields = [];
     const values = [];
 
-    const allowed = [
-      "type",
-      "title",
-      "subtitle",
-      "image",
-      "link",
-      "cta_text",
-      "sort_order",
-      "is_active",
-      "start_date",
-      "end_date",
-    ];
+    const fieldMap = {
+      type: "type",
+      bannerType: "type",
+      title: "title",
+      subtitle: "subtitle",
+      image: "image",
+      imageUrl: "image",
+      link: "link",
+      ctaLink: "link",
+      cta_text: "cta_text",
+      ctaText: "cta_text",
+      sort_order: "sort_order",
+      sortOrder: "sort_order",
+      displayOrder: "sort_order",
+      is_active: "is_active",
+      isActive: "is_active",
+      start_date: "start_date",
+      end_date: "end_date",
+    };
 
-    allowed.forEach((col) => {
-      if (data[col] !== undefined) {
-        fields.push(`${col} = ?`);
-        values.push(data[col]);
+    const handledDbCols = new Set();
+    for (const [key, col] of Object.entries(fieldMap)) {
+      if (data[key] !== undefined && !handledDbCols.has(col)) {
+        handledDbCols.add(col);
+        fields.push(`\`${col}\` = ?`);
+        if (col === "is_active") {
+          values.push(data[key] === true || data[key] === 1 || data[key] === "1" ? 1 : 0);
+        } else {
+          values.push(data[key]);
+        }
       }
-    });
+    }
 
     if (fields.length === 0) return this.findById(id);
 

@@ -43,7 +43,24 @@ async function getActiveCoupons(req, res) {
 // GET /api/admin/coupons -> Admin list all coupons
 async function adminGetCoupons(req, res) {
   try {
-    const coupons = await Coupon.findAll();
+    const rawCoupons = await Coupon.findAll();
+    const coupons = rawCoupons.map((c) => ({
+      id: c.id,
+      code: c.code,
+      description: c.description || "",
+      discountType: c.discount_type || "percentage",
+      discountValue: Number(c.discount_value || 0),
+      minOrderValue: Number(c.min_order_value || 0),
+      maxDiscountAmount: c.max_discount ? Number(c.max_discount) : undefined,
+      freeShipping: Boolean(c.free_shipping),
+      usageLimit: c.usage_limit ? Number(c.usage_limit) : undefined,
+      perUserLimit: Number(c.per_user_limit || 1),
+      timesUsed: Number(c.used_count || 0),
+      expiresAt: c.expires_at,
+      isActive: Boolean(c.is_active),
+      createdAt: c.created_at,
+      updatedAt: c.updated_at,
+    }));
     return res.json({ coupons });
   } catch (err) {
     console.error("adminGetCoupons error:", err);

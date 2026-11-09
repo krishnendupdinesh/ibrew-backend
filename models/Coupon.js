@@ -155,6 +155,27 @@ const Coupon = {
 
   async update(id, data) {
     const pool = getPool();
+    const existing = await pool.query("SELECT * FROM `coupons` WHERE `id` = ? LIMIT 1", [id]);
+    const current = existing[0]?.[0] || {};
+
+    const description = data.description !== undefined ? String(data.description || "").trim() : (current.description || "");
+    const discountType = (data.discountType || data.discount_type || current.discount_type) === "flat" ? "flat" : "percentage";
+    const discountValue = data.discountValue !== undefined ? Number(data.discountValue) : (data.discount_value !== undefined ? Number(data.discount_value) : Number(current.discount_value || 0));
+    const minOrderValue = data.minOrderValue !== undefined ? Number(data.minOrderValue) : (data.min_order_value !== undefined ? Number(data.min_order_value) : Number(current.min_order_value || 0));
+    const maxDiscount = data.maxDiscount !== undefined ? (data.maxDiscount ? Number(data.maxDiscount) : null) : (data.max_discount !== undefined ? (data.max_discount ? Number(data.max_discount) : null) : current.max_discount);
+    const freeShipping = data.freeShipping !== undefined ? (data.freeShipping ? 1 : 0) : (data.free_shipping !== undefined ? (data.free_shipping ? 1 : 0) : (current.free_shipping ? 1 : 0));
+    const usageLimit = data.usageLimit !== undefined ? (data.usageLimit ? Number(data.usageLimit) : null) : (data.usage_limit !== undefined ? (data.usage_limit ? Number(data.usage_limit) : null) : current.usage_limit);
+    const perUserLimit = data.perUserLimit !== undefined ? Number(data.perUserLimit) : (data.per_user_limit !== undefined ? Number(data.per_user_limit) : Number(current.per_user_limit || 1));
+    const expiresAt = data.expiresAt !== undefined ? (data.expiresAt ? new Date(data.expiresAt) : null) : (data.expires_at !== undefined ? (data.expires_at ? new Date(data.expires_at) : null) : current.expires_at);
+    
+    // Support boolean true/false, integer 1/0, or string
+    let isActive = current.is_active ? 1 : 0;
+    if (data.isActive !== undefined) {
+      isActive = data.isActive === true || data.isActive === 1 || data.isActive === "1" ? 1 : 0;
+    } else if (data.is_active !== undefined) {
+      isActive = data.is_active === true || data.is_active === 1 || data.is_active === "1" ? 1 : 0;
+    }
+
     await pool.query(
       `UPDATE \`coupons\` SET
         \`description\` = ?,
@@ -169,16 +190,16 @@ const Coupon = {
         \`is_active\` = ?
        WHERE \`id\` = ?`,
       [
-        String(data.description || "").trim(),
-        data.discountType === "flat" ? "flat" : "percentage",
-        Number(data.discountValue || 0),
-        Number(data.minOrderValue || 0),
-        data.maxDiscount ? Number(data.maxDiscount) : null,
-        data.freeShipping ? 1 : 0,
-        data.usageLimit ? Number(data.usageLimit) : null,
-        Number(data.perUserLimit || 1),
-        data.expiresAt ? new Date(data.expiresAt) : null,
-        data.isActive === false ? 0 : 1,
+        description,
+        discountType,
+        discountValue,
+        minOrderValue,
+        maxDiscount,
+        freeShipping,
+        usageLimit,
+        perUserLimit,
+        expiresAt,
+        isActive,
         id,
       ]
     );

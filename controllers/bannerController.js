@@ -3,7 +3,25 @@ const Banner = require("../models/Banner");
 exports.getActiveBanners = async (req, res) => {
   try {
     const { type, slot } = req.query;
-    const banners = await Banner.listActive(type || slot || null);
+    const rawBanners = await Banner.listActive(type || slot || null);
+    const banners = rawBanners.map((b) => ({
+      id: b.id,
+      bannerType: b.type,
+      type: b.type,
+      title: b.title,
+      subtitle: b.subtitle || "",
+      imageUrl: b.image || "",
+      image: b.image || "",
+      ctaText: b.cta_text || "Shop Now",
+      ctaLink: b.link || "/",
+      link: b.link || "/",
+      displayOrder: b.sort_order ?? 0,
+      sort_order: b.sort_order ?? 0,
+      isActive: Boolean(b.is_active),
+      is_active: b.is_active ? 1 : 0,
+      startDate: b.start_date,
+      endDate: b.end_date,
+    }));
     res.json({ success: true, banners });
   } catch (error) {
     console.error("getActiveBanners error:", error);
@@ -14,7 +32,27 @@ exports.getActiveBanners = async (req, res) => {
 exports.getAllBanners = async (req, res) => {
   try {
     const { type, slot } = req.query;
-    const banners = await Banner.listAll(type || slot || null);
+    const rawBanners = await Banner.listAll(type || slot || null);
+    const banners = rawBanners.map((b) => ({
+      id: b.id,
+      bannerType: b.type,
+      type: b.type,
+      title: b.title,
+      subtitle: b.subtitle || "",
+      imageUrl: b.image || "",
+      image: b.image || "",
+      ctaText: b.cta_text || "Shop Now",
+      ctaLink: b.link || "/",
+      link: b.link || "/",
+      displayOrder: b.sort_order ?? 0,
+      sort_order: b.sort_order ?? 0,
+      isActive: Boolean(b.is_active),
+      is_active: b.is_active ? 1 : 0,
+      startDate: b.start_date,
+      endDate: b.end_date,
+      createdAt: b.created_at,
+      updatedAt: b.updated_at,
+    }));
     res.json({ success: true, banners });
   } catch (error) {
     console.error("getAllBanners error:", error);
