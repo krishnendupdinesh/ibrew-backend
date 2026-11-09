@@ -462,12 +462,84 @@ async function reorderOrderItems(req, res) {
   }
 }
 
+// POST /api/orders/:orderId/cancel -> Customer cancels their own order (if pending or confirmed)
+async function cancelOrder(req, res) {
+  try {
+    const { orderId } = req.params;
+    const { reason } = req.body || {};
+    if (!orderId) {
+      return res.status(400).json({ error: "Order ID is required." });
+    }
+
+    const existing = await Order.findByOrderIdOrId(orderId);
+    if (!existing) {
+      return res.status(404).json({ error: "Order not found." });
+    }
+
+    if (existing.status === "cancelled") {
+      return res.status(400).json({ error: "This order is already cancelled." });
+    }
+
+    if (!["pending", "confirmed"].includes(existing.status)) {
+      return res.status(400).json({
+        error: `Cannot cancel order because it is already ${existing.status}. Please contact customer support for assistance.`,
+      });
+    }
+
+    // Optional ownership check if user is logged in
+    const user = await getUserFromCookie(req);
+    if (user && existing.customer?.email && user.role !== "admin") {
+      const orderEmail = String(existing.customer.email || "").trim().toLowerCase();
+      const userEmail = String(user.email || "").trim().toLowerCase();
+      const orderPhone = String(existing.customer.phone || "").trim();
+      const userPhone = String(user.phone || "").trim();
+
+      const emailMatch = orderEmail && userEmail && orderEmail === userEmail;
+      const phoneMatch = orderPhone && userPhone && orderPhone === userPhone;
+      if (orderEmail && !emailMatch && !phoneMatch) {
+        return res.status(403).json({ error: "You are not authorized to cancel this order." });
+      }
+    }
+
+    const cancelReasonText = reason ? String(reason).trim() : "Cancelled by customer";
+    const updatedNotes = existing.adminNotes
+      ? `${existing.adminNotes} | [Customer Cancel]: ${cancelReasonText}`
+      : `[Customer Cancel]: ${cancelReasonText}`;
+
+    const updateFields = {
+      status: "cancelled",
+      adminNotes: updatedNotes,
+    };
+
+    if (existing.paymentStatus === "paid") {
+      updateFields.paymentStatus = "refunded";
+    }
+
+    const updatedOrder = await Order.findOneAndUpdateByIdentifier(orderId, updateFields);
+    if (!updatedOrder) {
+      return res.status(404).json({ error: "Could not update order." });
+    }
+
+    notifyOrderEvent(updatedOrder, "ORDER_CANCELLED").catch(() => {});
+
+    res.json({
+      success: true,
+      message: "Order cancelled successfully and stock restored.",
+      order: updatedOrder,
+    });
+  } catch (error) {
+    console.error("cancelOrder error:", error);
+    res.status(500).json({ error: error.message || "Could not cancel order." });
+  }
+}
+
 module.exports = {
   createOrder,
   createRazorpayOrder,
   verifyRazorpayPayment,
   getOrderInvoice,
   reorderOrderItems,
+  cancelOrder,
   getMyOrders,
   trackOrder,
   getAdminOrders,

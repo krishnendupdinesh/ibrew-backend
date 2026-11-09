@@ -7,6 +7,7 @@ const {
   verifyRazorpayPayment,
   getOrderInvoice,
   reorderOrderItems,
+  cancelOrder,
 } = require("../controllers/orderController");
 
 const router = express.Router();
@@ -22,8 +23,9 @@ router.get("/track/:orderId", trackOrder);
 router.post("/razorpay/create", createRazorpayOrder);
 router.post("/razorpay/verify", verifyRazorpayPayment);
 
-// Invoice & reorder helpers
+// Invoice, reorder & cancellation helpers
 router.get("/:orderId/invoice", getOrderInvoice);
 router.get("/:orderId/reorder", reorderOrderItems);
+router.post("/:orderId/cancel", cancelOrder);
 
 module.exports = router;
