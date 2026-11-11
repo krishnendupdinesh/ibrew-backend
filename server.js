@@ -95,7 +95,35 @@ const staticUploadsMiddleware = express.static(uploadsDir, {
 app.use("/uploads", staticUploadsMiddleware);
 app.use("/api/uploads", staticUploadsMiddleware);
 
-// ----- routes -----
+let mySqlInitialized = false;
+let mySqlInitPromise = null;
+
+async function ensureMySQLReady() {
+  if (mySqlInitialized) return;
+  if (!mySqlInitPromise) {
+    mySqlInitPromise = initMySQL()
+      .then(() => {
+        mySqlInitialized = true;
+      })
+      .catch((err) => {
+        mySqlInitPromise = null;
+        throw err;
+      });
+  }
+  return mySqlInitPromise;
+}
+
+// In serverless environments (like Vercel), ensure MySQL is initialized before handling /api requests
+app.use(async (req, res, next) => {
+  if (req.path === "/" || req.path === "/favicon.ico") return next();
+  try {
+    await ensureMySQLReady();
+    next();
+  } catch (err) {
+    console.error("Database initialization failed during request:", err.message);
+    res.status(500).json({ error: "Database connection failed. Please verify DB credentials." });
+  }
+});
 app.get("/", (req, res) => res.send("ibrew backend is running (MySQL)"));
 
 // Mount rate limited public endpoints
