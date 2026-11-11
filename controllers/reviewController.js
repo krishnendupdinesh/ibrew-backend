@@ -40,13 +40,16 @@ async function submitReview(req, res) {
       return res.status(400).json({ error: "Name and comment are required." });
     }
 
-    // Process customer images if uploaded as data URIs
+    // Process customer images if uploaded as data URIs (Cloudinary or local)
     let cleanImages = [];
     if (Array.isArray(body.images)) {
       const { resolveAndSaveProductImage } = require("../utils/imageStorage");
-      cleanImages = body.images
-        .map((img, idx) => resolveAndSaveProductImage(img, `review-${prod.slug}-${idx}`))
-        .filter(Boolean);
+      const processed = await Promise.all(
+        body.images.map((img, idx) =>
+          Promise.resolve(resolveAndSaveProductImage(img, `review-${prod.slug}-${idx}`))
+        )
+      );
+      cleanImages = processed.filter(Boolean);
     }
 
     const reviewId = await Review.create({

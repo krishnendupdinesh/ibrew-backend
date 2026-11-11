@@ -404,7 +404,9 @@ class BulkProduct {
       slug = `${baseSlug}-${Math.floor(100 + Math.random() * 900)}`;
     }
 
-    const cleanImage = resolveAndSaveProductImage(data.image || data.imageUrl || "", slug);
+    const cleanImage = await Promise.resolve(
+      resolveAndSaveProductImage(data.image || data.imageUrl || "", slug)
+    );
     const isActive =
       data.isActive !== undefined
         ? data.isActive === true || data.isActive === 1 || data.isActive === "1"
@@ -451,7 +453,7 @@ class BulkProduct {
     let nextImage = existing.image;
     const rawImg = data.image !== undefined ? data.image : data.imageUrl;
     if (rawImg !== undefined) {
-      nextImage = resolveAndSaveProductImage(rawImg, existing.slug);
+      nextImage = await Promise.resolve(resolveAndSaveProductImage(rawImg, existing.slug));
     }
 
     const nextSortOrder =

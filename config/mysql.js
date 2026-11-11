@@ -4,18 +4,42 @@ const fs = require("fs");
 const path = require("path");
 
 function getMySQLCredentials() {
-  const host = process.env.MYSQL_HOST || process.env.MYSQLHOST || "localhost";
-  const port = Number(process.env.MYSQL_PORT || process.env.MYSQLPORT || 3306);
-  const user = process.env.MYSQL_USER || process.env.MYSQLUSER || "root";
-  const password = process.env.MYSQL_PASSWORD || process.env.MYSQLPASSWORD || "";
-  const database = process.env.MYSQL_DATABASE || process.env.MYSQLDATABASE || "imaans_db";
+  const host =
+    process.env.DB_HOST ||
+    process.env.MYSQL_HOST ||
+    process.env.MYSQLHOST ||
+    "localhost";
+  const port = Number(
+    process.env.DB_PORT ||
+    process.env.MYSQL_PORT ||
+    process.env.MYSQLPORT ||
+    3306
+  );
+  const user =
+    process.env.DB_USER ||
+    process.env.MYSQL_USER ||
+    process.env.MYSQLUSER ||
+    "root";
+  const password =
+    process.env.DB_PASSWORD !== undefined
+      ? process.env.DB_PASSWORD
+      : (process.env.MYSQL_PASSWORD || process.env.MYSQLPASSWORD || "");
+  const database =
+    process.env.DB_NAME ||
+    process.env.MYSQL_DATABASE ||
+    process.env.MYSQLDATABASE ||
+    "imaans_db";
   return { host, port, user, password, database };
 }
 
-// Ensure uploads/products directory exists locally
+// Ensure uploads/products directory exists locally (safe guard for local environments)
 const UPLOADS_PRODUCTS_DIR = path.join(__dirname, "..", "uploads", "products");
-if (!fs.existsSync(UPLOADS_PRODUCTS_DIR)) {
-  fs.mkdirSync(UPLOADS_PRODUCTS_DIR, { recursive: true });
+try {
+  if (!fs.existsSync(UPLOADS_PRODUCTS_DIR)) {
+    fs.mkdirSync(UPLOADS_PRODUCTS_DIR, { recursive: true });
+  }
+} catch {
+  // Read-only filesystem in serverless environments
 }
 
 let pool = null;
@@ -23,13 +47,22 @@ let pool = null;
 function getPool() {
   if (!pool) {
     const dbUrl = process.env.DATABASE_URL || process.env.MYSQL_URL;
+
+    // SSL configuration: enable rejectUnauthorized: false by default for managed cloud MySQL (TiDB, PlanetScale, Aiven, RDS, DigitalOcean)
+    // Can be explicitly disabled locally with DB_SSL=false or MYSQL_SSL=false
+    const sslEnv = process.env.DB_SSL ?? process.env.MYSQL_SSL;
+    const isLocalHost = !dbUrl && (process.env.DB_HOST === "localhost" || process.env.DB_HOST === "127.0.0.1" || (!process.env.DB_HOST && !process.env.MYSQL_HOST));
+    const useSSL = sslEnv !== undefined ? sslEnv === "true" || sslEnv === "1" : !isLocalHost;
+    const sslConfig = useSSL ? { rejectUnauthorized: false } : undefined;
+
     if (dbUrl) {
       pool = mysql.createPool({
         uri: dbUrl,
         waitForConnections: true,
-        connectionLimit: 10,
+        connectionLimit: 5,
         queueLimit: 0,
         charset: "utf8mb4",
+        ssl: sslConfig,
       });
     } else {
       const creds = getMySQLCredentials();
@@ -40,9 +73,10 @@ function getPool() {
         password: creds.password,
         database: creds.database,
         waitForConnections: true,
-        connectionLimit: 10,
+        connectionLimit: 5,
         queueLimit: 0,
         charset: "utf8mb4",
+        ssl: sslConfig,
       });
     }
   }

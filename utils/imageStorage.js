@@ -1,6 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
+const cloudinary = require("cloudinary").v2;
 const { UPLOADS_PRODUCTS_DIR } = require("../config/mysql");
 
 const MIME_TO_EXT = {
@@ -9,6 +10,34 @@ const MIME_TO_EXT = {
   "image/png": "png",
   "image/webp": "webp",
 };
+
+/**
+ * Configure Cloudinary with environment variables when present.
+ * Uses CLOUDINARY_URL or CLOUDINARY_CLOUD_NAME + CLOUDINARY_API_KEY + CLOUDINARY_API_SECRET.
+ */
+function isCloudinaryConfigured() {
+  if (process.env.CLOUDINARY_URL && process.env.CLOUDINARY_URL.trim()) {
+    return true;
+  }
+  return Boolean(
+    process.env.CLOUDINARY_CLOUD_NAME &&
+      process.env.CLOUDINARY_API_KEY &&
+      process.env.CLOUDINARY_API_SECRET
+  );
+}
+
+if (isCloudinaryConfigured()) {
+  if (process.env.CLOUDINARY_URL) {
+    cloudinary.config({ cloudinary_url: process.env.CLOUDINARY_URL });
+  } else {
+    cloudinary.config({
+      cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+      api_key: process.env.CLOUDINARY_API_KEY,
+      api_secret: process.env.CLOUDINARY_API_SECRET,
+      secure: true,
+    });
+  }
+}
 
 /**
  * Validates buffer against file signatures (magic bytes).
@@ -54,9 +83,49 @@ function detectImageFormat(buffer) {
 }
 
 /**
- * Ensures product images are stored on disk inside `ibrew-backend/uploads/products/`
- * and returns a clean URL path (never base64 data) for storage in MySQL.
- * Strictly accepts only PNG, JPEG, and WebP, validated by file magic bytes.
+ * Asynchronously uploads an image buffer or data URI to Cloudinary.
+ * Returns the secure HTTPS URL.
+ */
+async function uploadToCloudinary(imageInput, publicIdPrefix = "ibrew/products") {
+  if (!isCloudinaryConfigured()) {
+    throw new Error("Cloudinary credentials are not configured in environment variables.");
+  }
+
+  // Ensure latest config is loaded (e.g. if loaded dynamically via dotenv)
+  if (process.env.CLOUDINARY_URL) {
+    cloudinary.config({ cloudinary_url: process.env.CLOUDINARY_URL });
+  } else {
+    cloudinary.config({
+      cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+      api_key: process.env.CLOUDINARY_API_KEY,
+      api_secret: process.env.CLOUDINARY_API_SECRET,
+      secure: true,
+    });
+  }
+
+  const safePrefix =
+    String(publicIdPrefix || "product")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/(^-|-$)/g, "")
+      .slice(0, 48) || "product";
+
+  const publicId = `${safePrefix}-${Date.now()}-${crypto.randomBytes(4).toString("hex")}`;
+
+  const uploadResult = await cloudinary.uploader.upload(imageInput, {
+    folder: "ibrew",
+    public_id: publicId,
+    resource_type: "image",
+    overwrite: true,
+  });
+
+  return uploadResult.secure_url || uploadResult.url;
+}
+
+/**
+ * Saves image either to Cloudinary (in serverless/cloud or when configured)
+ * or falls back safely to disk in local development.
+ * Accepts both sync and promise return patterns.
  */
 function resolveAndSaveProductImage(imageInput, prefix = "product") {
   const raw = String(imageInput || "").trim();
@@ -93,18 +162,34 @@ function resolveAndSaveProductImage(imageInput, prefix = "product") {
         .replace(/(^-|-$)/g, "")
         .slice(0, 48) || "product";
 
-    const uniqueSuffix = `${Date.now()}-${crypto.randomBytes(4).toString("hex")}`;
-    const filename = `${safePrefix}-${uniqueSuffix}.${detectedExt}`;
-    const filePath = path.join(UPLOADS_PRODUCTS_DIR, filename);
-
-    if (!fs.existsSync(UPLOADS_PRODUCTS_DIR)) {
-      fs.mkdirSync(UPLOADS_PRODUCTS_DIR, { recursive: true });
+    // If Cloudinary is configured, upload directly to Cloudinary
+    if (isCloudinaryConfigured()) {
+      // Async upload to Cloudinary (can be awaited by callers)
+      return uploadToCloudinary(raw, safePrefix).catch((err) => {
+        console.error("Cloudinary upload error:", err.message);
+        return "";
+      });
     }
 
-    fs.writeFileSync(filePath, buffer);
+    // Fallback for local development without Cloudinary credentials:
+    // Store in uploads/products locally if filesystem is writable
+    try {
+      const uniqueSuffix = `${Date.now()}-${crypto.randomBytes(4).toString("hex")}`;
+      const filename = `${safePrefix}-${uniqueSuffix}.${detectedExt}`;
+      const filePath = path.join(UPLOADS_PRODUCTS_DIR, filename);
 
-    // Served by Express at both /uploads/products/:file and /api/uploads/products/:file
-    return `/api/uploads/products/${filename}`;
+      if (!fs.existsSync(UPLOADS_PRODUCTS_DIR)) {
+        fs.mkdirSync(UPLOADS_PRODUCTS_DIR, { recursive: true });
+      }
+
+      fs.writeFileSync(filePath, buffer);
+
+      // Served by Express at both /uploads/products/:file and /api/uploads/products/:file
+      return `/api/uploads/products/${filename}`;
+    } catch (fsErr) {
+      console.warn("Local disk write unavailable (serverless filesystem):", fsErr.message);
+      return "";
+    }
   }
 
   // Never allow raw data URI strings into database
@@ -123,4 +208,6 @@ function resolveAndSaveProductImage(imageInput, prefix = "product") {
 module.exports = {
   resolveAndSaveProductImage,
   detectImageFormat,
+  uploadToCloudinary,
+  isCloudinaryConfigured,
 };

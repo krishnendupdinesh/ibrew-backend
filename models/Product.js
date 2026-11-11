@@ -210,7 +210,7 @@ const Product = {
       await conn.beginTransaction();
 
       const slug = String(data.slug || makeSlug(data.name)).trim();
-      const imagePath = resolveAndSaveProductImage(data.image, slug);
+      const imagePath = await Promise.resolve(resolveAndSaveProductImage(data.image, slug));
       const tagsStr = serializeTags(data.tags);
       const mongoId = data.mongoId ? String(data.mongoId) : null;
 
@@ -308,7 +308,7 @@ const Product = {
       const productId = existingRow.id;
       const imagePath =
         data.image !== undefined
-          ? resolveAndSaveProductImage(data.image, existingRow.slug || data.name)
+          ? await Promise.resolve(resolveAndSaveProductImage(data.image, existingRow.slug || data.name))
           : existingRow.image;
 
       const tagsStr =

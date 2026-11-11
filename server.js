@@ -39,16 +39,21 @@ app.use(
 );
 
 // ----- CORS Configuration -----
-// Parse comma-separated CLIENT_URL origins and trim them
-const allowedOrigins = (process.env.CLIENT_URL || "")
+// Allowed frontend origins: FRONTEND_URL, CLIENT_URL, and localhost:3000 for local dev
+const configuredFrontend = process.env.FRONTEND_URL || process.env.CLIENT_URL || "";
+const configuredOrigins = configuredFrontend
   .split(",")
   .map((o) => o.trim().replace(/\/+$/, ""))
   .filter(Boolean);
 
+const allowedOrigins = Array.from(
+  new Set(["http://localhost:3000", "http://127.0.0.1:3000", ...configuredOrigins])
+);
+
 app.use(
   cors({
     origin: function (origin, callback) {
-      // Allow requests with no origin (such as server-to-server calls from Next.js proxy, curl, or mobile)
+      // Allow requests with no origin (such as server-to-server calls from Next.js rewrite/proxy, curl, or mobile)
       if (!origin) return callback(null, true);
       const clean = origin.trim().replace(/\/+$/, "");
       if (allowedOrigins.includes(clean)) {

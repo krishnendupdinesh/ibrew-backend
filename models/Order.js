@@ -271,7 +271,7 @@ const Order = {
           }
         }
 
-        const cleanImage = resolveAndSaveProductImage(item.image, productKey);
+        const cleanImage = await Promise.resolve(resolveAndSaveProductImage(item.image, productKey));
         resolvedItems.push({
           productId,
           productKey,
