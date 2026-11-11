@@ -182,10 +182,15 @@ async function exportOrdersCSV(req, res) {
        ORDER BY o.created_at DESC`
     );
 
-    // Escape CSV cell helper
+    // Escape and sanitize CSV cell helper (prevents CSV Formula / DDE Injection)
     const esc = (val) => {
       if (val === null || val === undefined) return '""';
-      const str = String(val).replace(/"/g, '""');
+      let str = String(val);
+      // Neutralize formula triggers in Excel / LibreOffice
+      if (/^[=+\-@\t\r]/.test(str)) {
+        str = "'" + str;
+      }
+      str = str.replace(/"/g, '""');
       return `"${str}"`;
     };
 

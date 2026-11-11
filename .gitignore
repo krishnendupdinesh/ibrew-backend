@@ -1,7 +1,9 @@
-node_modules
+node_modules/
 .env
 .env.*
 !.env.example
 backups/
+*.json.bak
+.admin-credentials.json
 uploads/products/*
 !uploads/products/.gitkeep

@@ -159,6 +159,35 @@ const User = {
 
     return User.findById(existing.id);
   },
+
+  async findByIdAndUpdate(id, update) {
+    const pool = getPool();
+    const existing = await User.findById(id);
+    if (!existing) return null;
+
+    const payload = update.$set ? update.$set : update;
+    const nextName = payload.name !== undefined ? String(payload.name).trim() : existing.name;
+    const nextPhone = payload.phone !== undefined ? String(payload.phone).trim() : existing.phone;
+    const nextPassword = payload.password !== undefined ? String(payload.password) : existing.password;
+    const nextRole = payload.role !== undefined ? payload.role : existing.role;
+    const nextMustReset =
+      payload.mustResetPassword !== undefined
+        ? payload.mustResetPassword
+          ? 1
+          : 0
+        : existing.mustResetPassword
+        ? 1
+        : 0;
+
+    await pool.execute(
+      `UPDATE \`users\`
+       SET \`name\` = ?, \`phone\` = ?, \`password\` = ?, \`role\` = ?, \`must_reset_password\` = ?
+       WHERE \`id\` = ?`,
+      [nextName, nextPhone, nextPassword, nextRole, nextMustReset, Number(id)]
+    );
+
+    return User.findById(id);
+  },
 };
 
 module.exports = User;

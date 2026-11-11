@@ -110,4 +110,53 @@ iBrew Team
     console.log(`Order notification sent: ${event} - ${order.orderId || order.id}`);
 }
 
-module.exports = { notifyOrderEvent };
+async function sendPasswordResetEmail(email, resetUrl, userName = "Customer") {
+    const mailer = getTransporter();
+
+    if (!mailer) {
+        console.log(`[PASSWORD RESET] Email notifications skipped (SMTP not configured). Reset URL for ${email}: ${resetUrl}`);
+        return;
+    }
+
+    try {
+        await mailer.sendMail({
+            from: process.env.SMTP_FROM || process.env.SMTP_USER,
+            to: email,
+            subject: "Reset your iBrew password",
+            text: `
+Hello ${userName},
+
+We received a request to reset the password for your iBrew account.
+
+Click the link below (or copy and paste it into your browser) to choose a new password:
+${resetUrl}
+
+This link is valid for 1 hour. If you did not request this, you can safely ignore this email.
+
+Best regards,
+The iBrew Team
+            `.trim(),
+            html: `
+<div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #e5e5e5; border-radius: 8px;">
+    <h2 style="color: #2b1810; margin-top: 0;">Reset Your iBrew Password</h2>
+    <p>Hello ${userName},</p>
+    <p>We received a request to reset your password. Click the button below to choose a new password. This link is valid for <strong>1 hour</strong>.</p>
+    <p style="margin: 28px 0;">
+        <a href="${resetUrl}" style="background-color: #78350f; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">
+            Reset Password
+        </a>
+    </p>
+    <p style="color: #666; font-size: 13px;">Or copy and paste this link into your browser:</p>
+    <p style="color: #888; font-size: 12px; word-break: break-all;"><a href="${resetUrl}">${resetUrl}</a></p>
+    <hr style="border: none; border-top: 1px solid #eee; margin: 24px 0;" />
+    <p style="color: #999; font-size: 12px;">If you did not request a password reset, you can safely ignore this email.</p>
+</div>
+            `.trim(),
+        });
+        console.log(`Password reset email sent to ${email}`);
+    } catch (err) {
+        console.error("Failed to send password reset email:", err.message);
+    }
+}
+
+module.exports = { notifyOrderEvent, sendPasswordResetEmail };

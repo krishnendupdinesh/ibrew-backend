@@ -61,3 +61,4 @@ exports.deleteBulkProduct = async (req, res) => {
     res.status(500).json({ error: "Failed to delete bulk product." });
   }
 };
+

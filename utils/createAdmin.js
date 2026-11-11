@@ -7,10 +7,15 @@ const { initMySQL, getPool } = require("../config/mysql");
 const User = require("../models/User");
 
 async function createAdmin() {
+  const adminPassword = process.env.ADMIN_PASSWORD;
+  if (!adminPassword || !adminPassword.trim()) {
+    throw new Error("ADMIN_PASSWORD environment variable must be set in .env before seeding admin.");
+  }
+
   await initMySQL();
 
   const email = (process.env.ADMIN_EMAIL || "admin@ibrew.com").toLowerCase();
-  const hashedPassword = await bcrypt.hash(process.env.ADMIN_PASSWORD || "Admin@12345", 10);
+  const hashedPassword = await bcrypt.hash(adminPassword.trim(), 10);
 
   // If this email already exists, make it an admin. Otherwise create it.
   await User.findOneAndUpdate(
@@ -24,11 +29,11 @@ async function createAdmin() {
     { upsert: true }
   );
 
-  console.log(`Admin ready in MySQL -> email: ${email}`);
+  console.log(`Admin account verified in MySQL -> email: ${email}`);
   await getPool().end();
 }
 
 createAdmin().catch((error) => {
-  console.log("Could not create admin:", error.message);
+  console.error("Could not create admin:", error.message);
   process.exit(1);
 });

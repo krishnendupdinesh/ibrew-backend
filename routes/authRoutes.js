@@ -6,6 +6,7 @@ const {
   setupAdmin,
   getResetPasswordInfo,
   resetPassword,
+  refreshSession,
   me,
   logout,
 } = require("../controllers/authController");
@@ -15,6 +16,7 @@ const router = express.Router();
 router.post("/register", register);
 router.post("/login", login);
 router.post("/setup-admin", setupAdmin);
+router.post("/refresh", refreshSession);
 router.get("/reset-password", requireLogin, requireAdmin, getResetPasswordInfo);
 router.post("/reset-password", requireLogin, requireAdmin, resetPassword);
 router.get("/me", me);

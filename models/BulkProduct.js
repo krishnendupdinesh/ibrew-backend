@@ -506,3 +506,4 @@ class BulkProduct {
 }
 
 module.exports = BulkProduct;
+

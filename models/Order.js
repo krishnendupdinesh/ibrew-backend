@@ -236,31 +236,38 @@ const Order = {
         const productKey = String(item.productId || item.id || "item").trim();
         const productRow = await findProductForOrderItem(conn, productKey, item.name);
 
-        let productId = null;
-        if (productRow) {
-          productId = productRow.id;
-          if (!options.skipStockDeduction) {
-            const sizeRow = await findMatchingSizeRowForUpdate(conn, productId, item.size);
-            const available = sizeRow ? Number(sizeRow.stock || 0) : 0;
-            if (!sizeRow || available < qty) {
-              const err = new Error(
-                `Insufficient stock for "${item.name || productRow.name}"${
-                  item.size ? ` (${item.size})` : ""
-                }. Available: ${available}, requested: ${qty}.`
-              );
-              err.statusCode = 400;
-              throw err;
-            }
+        if (!productRow) {
+          const err = new Error(`Item "${item.name || productKey}" could not be found in our product catalog.`);
+          err.statusCode = 400;
+          throw err;
+        }
 
-            const [upd] = await conn.execute(
-              "UPDATE `product_sizes` SET `stock` = `stock` - ? WHERE `id` = ? AND `stock` >= ?",
-              [qty, sizeRow.id, qty]
-            );
-            if (upd.affectedRows !== 1) {
-              const err = new Error(`Insufficient stock for "${item.name || productRow.name}".`);
-              err.statusCode = 400;
-              throw err;
-            }
+        const productId = productRow.id;
+        const sizeRow = await findMatchingSizeRowForUpdate(conn, productId, item.size);
+        if (!sizeRow) {
+          const err = new Error(`Variant "${item.size || "Standard"}" for "${productRow.name}" is not available.`);
+          err.statusCode = 400;
+          throw err;
+        }
+
+        const available = Number(sizeRow.stock || 0);
+        if (available < qty) {
+          const err = new Error(
+            `Insufficient stock for "${productRow.name}" (${sizeRow.label}). Available: ${available}, requested: ${qty}.`
+          );
+          err.statusCode = 400;
+          throw err;
+        }
+
+        if (!options.skipStockDeduction) {
+          const [upd] = await conn.execute(
+            "UPDATE `product_sizes` SET `stock` = `stock` - ? WHERE `id` = ? AND `stock` >= ?",
+            [qty, sizeRow.id, qty]
+          );
+          if (upd.affectedRows !== 1) {
+            const err = new Error(`Insufficient stock for "${productRow.name}" (${sizeRow.label}).`);
+            err.statusCode = 400;
+            throw err;
           }
         }
 
