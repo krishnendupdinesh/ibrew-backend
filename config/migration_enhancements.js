@@ -31,6 +31,8 @@ async function runEnhancementsMigration() {
   await ensureColumn("products", "brewing_guide", "TEXT NULL");
   await ensureColumn("products", "specifications", "JSON NULL");
   await ensureColumn("products", "low_stock_threshold", "INT UNSIGNED NOT NULL DEFAULT 5");
+  await ensureColumn("products", "is_active", "TINYINT(1) NOT NULL DEFAULT 1");
+  await ensureColumn("products", "deleted_at", "DATETIME NULL DEFAULT NULL");
 
   // 3. Add order payment & coupon columns
   await ensureColumn("orders", "coupon_code", "VARCHAR(50) NOT NULL DEFAULT ''");

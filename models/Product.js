@@ -148,13 +148,13 @@ async function resolveProductRow(connOrPool, idOrSlug) {
 const Product = {
   async countDocuments() {
     const pool = getPool();
-    const [rows] = await pool.execute("SELECT COUNT(*) AS cnt FROM `products`");
+    const [rows] = await pool.execute("SELECT COUNT(*) AS cnt FROM `products` WHERE `is_active` = 1 AND `deleted_at` IS NULL");
     return Number(rows[0]?.cnt || 0);
   },
 
   async findAllSlugs() {
     const pool = getPool();
-    const [rows] = await pool.execute("SELECT `slug` FROM `products`");
+    const [rows] = await pool.execute("SELECT `slug` FROM `products` WHERE `is_active` = 1 AND `deleted_at` IS NULL");
     return rows.map((r) => r.slug).filter(Boolean);
   },
 
@@ -162,6 +162,11 @@ const Product = {
     const pool = getPool();
     const whereClauses = [];
     const params = [];
+
+    // Filter out deleted/inactive products unless explicitly requested by admin
+    if (sortMode !== "admin_all") {
+      whereClauses.push("`is_active` = 1 AND `deleted_at` IS NULL");
+    }
 
     if (filter.section) {
       whereClauses.push("`section` = ?");
@@ -187,7 +192,7 @@ const Product = {
 
     const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(" AND ")}` : "";
     const orderSql =
-      sortMode === "admin"
+      sortMode === "admin" || sortMode === "admin_all"
         ? "ORDER BY `created_at` DESC, `id` DESC"
         : "ORDER BY `is_most_selling` DESC, `is_best_seller` DESC, `created_at` DESC, `id` DESC";
 
@@ -199,6 +204,7 @@ const Product = {
     const pool = getPool();
     const row = await resolveProductRow(pool, idOrSlug);
     if (!row) return null;
+    if (row.is_active === 0 || row.deleted_at !== null) return null;
     const [products] = await attachSizesToProducts(pool, [row]);
     return products || null;
   },
@@ -385,8 +391,47 @@ const Product = {
     const pool = getPool();
     const existingRow = await resolveProductRow(pool, idOrSlug);
     if (!existingRow) return null;
-    await pool.execute("DELETE FROM `products` WHERE `id` = ?", [existingRow.id]);
-    return existingRow;
+
+    const productId = existingRow.id;
+
+    // Check if product is referenced in order_items
+    const [orderRefs] = await pool.execute(
+      "SELECT COUNT(*) AS cnt FROM `order_items` WHERE `product_id` = ? OR `product_key` = ? OR `product_key` = ?",
+      [productId, String(productId), existingRow.slug]
+    );
+    const hasOrders = Number(orderRefs[0]?.cnt || 0) > 0;
+
+    const conn = await pool.getConnection();
+    try {
+      await conn.beginTransaction();
+
+      // Clean up dependent child rows: product_sizes, product_reviews, product_recommendations
+      await conn.execute("DELETE FROM `product_sizes` WHERE `product_id` = ?", [productId]);
+      await conn.execute("DELETE FROM `product_reviews` WHERE `product_id` = ?", [productId]);
+      await conn.execute(
+        "DELETE FROM `product_recommendations` WHERE `product_id` = ? OR `recommended_product_id` = ?",
+        [productId, productId]
+      );
+
+      if (hasOrders) {
+        // Safe soft-delete: preserve historical order items and analytics
+        await conn.execute(
+          "UPDATE `products` SET `is_active` = 0, `deleted_at` = NOW() WHERE `id` = ?",
+          [productId]
+        );
+      } else {
+        // Hard-delete: remove from products table completely
+        await conn.execute("DELETE FROM `products` WHERE `id` = ?", [productId]);
+      }
+
+      await conn.commit();
+      return { ...existingRow, softDeleted: hasOrders };
+    } catch (err) {
+      await conn.rollback();
+      throw err;
+    } finally {
+      conn.release();
+    }
   },
 
   async getRecommendations(idOrSlug) {

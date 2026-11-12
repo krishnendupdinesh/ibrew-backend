@@ -305,10 +305,13 @@ async function deleteProduct(req, res) {
     if (!deleted) {
       return res.status(404).json({ error: "Product not found." });
     }
-    res.json({ ok: true, success: true });
+    const message = deleted.softDeleted
+      ? "Product has past order history; safely archived and removed from storefront."
+      : "Product deleted successfully.";
+    res.json({ ok: true, success: true, message });
   } catch (error) {
-    console.log("deleteProduct error:", error.message);
-    res.status(500).json({ error: "Could not delete the product." });
+    console.error("deleteProduct error:", error);
+    res.status(500).json({ error: error?.message || "Could not delete the product." });
   }
 }
 
