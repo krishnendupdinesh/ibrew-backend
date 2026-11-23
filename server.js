@@ -39,50 +39,10 @@ app.use(
 );
 
 // ----- CORS Configuration -----
-// Allowed frontend origins: FRONTEND_URL, CLIENT_URL, production domains, and localhost for local dev
-const configuredFrontend = [
-  process.env.FRONTEND_URL,
-  process.env.CLIENT_URL,
-  "https://www.imaansonline.com",
-  "https://imaansonline.com",
-  "https://ibrew-web.vercel.app",
-]
-  .filter(Boolean)
-  .join(",");
-
-const configuredOrigins = configuredFrontend
-  .split(",")
-  .map((o) => o.trim().replace(/\/+$/, ""))
-  .filter(Boolean);
-
-const defaultAllowedOrigins = [
-  "http://localhost:3000",
-  "http://127.0.0.1:3000",
-  "https://www.imaansonline.com",
-  "https://imaansonline.com",
-  "https://ibrew-web.vercel.app",
-  ...configuredOrigins,
-];
-
-const allowedOrigins = Array.from(new Set(defaultAllowedOrigins));
-
+// Allow all origins by reflecting request origin so cookies/credentials and Next.js / Vercel / mobile succeed without block
 app.use(
   cors({
-    origin: function (origin, callback) {
-      // Allow requests with no origin (such as server-to-server calls from Next.js rewrite/proxy, curl, or mobile)
-      if (!origin) return callback(null, true);
-      const clean = origin.trim().replace(/\/+$/, "");
-
-      // Check allowed origins list or any imaansonline / vercel.app deployment
-      if (
-        allowedOrigins.includes(clean) ||
-        /^https:\/\/([a-zA-Z0-9-]+\.)*imaansonline\.com$/i.test(clean) ||
-        /^https:\/\/([a-zA-Z0-9-]+\.)*vercel\.app$/i.test(clean)
-      ) {
-        return callback(null, true);
-      }
-      return callback(new Error("CORS origin blocked"));
-    },
+    origin: true,
     credentials: true,
   })
 );

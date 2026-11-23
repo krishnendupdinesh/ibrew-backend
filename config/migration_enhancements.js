@@ -34,6 +34,13 @@ async function runEnhancementsMigration() {
   await ensureColumn("products", "is_active", "TINYINT(1) NOT NULL DEFAULT 1");
   await ensureColumn("products", "deleted_at", "DATETIME NULL DEFAULT NULL");
 
+  // Ensure homepage_banners image column can store long data URLs if needed
+  try {
+    await pool.query("ALTER TABLE `homepage_banners` MODIFY COLUMN `image` MEDIUMTEXT NULL");
+  } catch {
+    // ignore if table does not exist yet
+  }
+
   // 3. Add order payment & coupon columns
   await ensureColumn("orders", "coupon_code", "VARCHAR(50) NOT NULL DEFAULT ''");
   await ensureColumn("orders", "coupon_discount", "DECIMAL(12,2) NOT NULL DEFAULT 0.00");

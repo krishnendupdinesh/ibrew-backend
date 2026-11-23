@@ -1,4 +1,5 @@
 const { getPool } = require("../config/mysql");
+const { resolveAndSaveProductImage } = require("../utils/imageStorage");
 
 class Banner {
   static async listActive(type = null) {
@@ -47,6 +48,16 @@ class Banner {
       ? (data.isActive === true || data.isActive === 1 || data.isActive === "1" ? 1 : 0)
       : (data.is_active ?? 1);
 
+    let image = data.image || data.imageUrl || "";
+    if (image && image.startsWith("data:")) {
+      try {
+        const slug = (data.title || "banner").toLowerCase().replace(/[^a-z0-9]+/g, "-");
+        image = await resolveAndSaveProductImage(image, `banner-${slug}-${Date.now()}`);
+      } catch (err) {
+        console.warn("Failed to save banner image to file:", err);
+      }
+    }
+
     const [res] = await pool.query(
       `INSERT INTO homepage_banners 
        (type, title, subtitle, image, link, cta_text, sort_order, is_active, start_date, end_date)
@@ -55,7 +66,7 @@ class Banner {
         data.type || data.bannerType || "hero_slide",
         data.title,
         data.subtitle || "",
-        data.image || data.imageUrl || "",
+        image,
         data.link || data.ctaLink || "/",
         data.cta_text || data.ctaText || "Shop Now",
         data.sort_order ?? data.sortOrder ?? data.displayOrder ?? 0,
@@ -71,6 +82,24 @@ class Banner {
     const pool = getPool();
     const fields = [];
     const values = [];
+
+    if (data.image && data.image.startsWith("data:")) {
+      try {
+        const slug = (data.title || "banner").toLowerCase().replace(/[^a-z0-9]+/g, "-");
+        data.image = await resolveAndSaveProductImage(data.image, `banner-${slug}-${Date.now()}`);
+        data.imageUrl = data.image;
+      } catch (err) {
+        console.warn("Failed to save banner image to file:", err);
+      }
+    } else if (data.imageUrl && data.imageUrl.startsWith("data:")) {
+      try {
+        const slug = (data.title || "banner").toLowerCase().replace(/[^a-z0-9]+/g, "-");
+        data.imageUrl = await resolveAndSaveProductImage(data.imageUrl, `banner-${slug}-${Date.now()}`);
+        data.image = data.imageUrl;
+      } catch (err) {
+        console.warn("Failed to save banner image to file:", err);
+      }
+    }
 
     const fieldMap = {
       type: "type",

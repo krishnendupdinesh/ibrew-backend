@@ -70,7 +70,7 @@ exports.createBanner = async (req, res) => {
     res.status(201).json({ success: true, banner });
   } catch (error) {
     console.error("createBanner error:", error);
-    res.status(500).json({ error: "Failed to create banner" });
+    res.status(500).json({ error: error?.message || "Failed to create banner" });
   }
 };
 
