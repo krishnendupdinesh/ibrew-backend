@@ -23,6 +23,7 @@ const orderRoutes = require("./routes/orderRoutes");
 const couponRoutes = require("./routes/couponRoutes");
 const reviewRoutes = require("./routes/reviewRoutes");
 const bannerRoutes = require("./routes/bannerRoutes");
+const { publicRouter: heroBannerPublicRoutes } = require("./routes/heroBannerRoutes");
 const userAddressRoutes = require("./routes/userAddressRoutes");
 const shippingRoutes = require("./routes/shippingRoutes");
 
@@ -122,6 +123,7 @@ app.use("/api/orders", orderRoutes);
 app.use("/api/coupons", couponRoutes);
 app.use("/api/products", reviewRoutes);
 app.use("/api/banners", bannerRoutes);
+app.use("/api/hero-banners", heroBannerPublicRoutes);
 app.use("/api/user/addresses", userAddressRoutes);
 app.use("/api/shipping", shippingRoutes);
 

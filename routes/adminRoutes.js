@@ -71,6 +71,9 @@ router.post("/banners", bannerController.createBanner);
 router.put("/banners/:id", bannerController.updateBanner);
 router.delete("/banners/:id", bannerController.deleteBanner);
 
+// Hero banner management (homepage slideshow)
+router.use("/hero-banners", require("./heroBannerRoutes").adminRouter);
+
 // Bulk quotation catalog management
 router.get("/bulk-products", bulkProductController.getAdminBulkProducts);
 router.post("/bulk-products", bulkProductController.createBulkProduct);

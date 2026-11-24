@@ -6,6 +6,8 @@
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js",
+    "migrate:hero-banners": "node scripts/runHeroBannersMigration.js",
+    "seed:hero-banners": "node scripts/seedHeroBanners.js",
     "seed:admin": "node utils/createAdmin.js",
     "seed:dummy": "node utils/seedDummyProducts.js",
     "db:verify-mysql": "node utils/verifyMysqlStage1.js",
@@ -24,6 +26,7 @@
     "express-rate-limit": "^8.7.4",
     "helmet": "^8.3.0",
     "jsonwebtoken": "^9.0.3",
+    "multer": "^2.5.0",
     "mysql2": "^3.24.6",
     "nodemailer": "^10.3.1",
     "razorpay": "^2.9.8"
